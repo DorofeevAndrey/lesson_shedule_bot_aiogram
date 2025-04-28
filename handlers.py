@@ -8,6 +8,8 @@ from keyboards import (
     build_slots_time_keyboard,
     get_admin_calendar_keyboard,
     get_admin_keyboard,
+    get_all_user_lesson_keyboard,
+    get_lesson_info_keyboard,
     get_user_calendar_keyboard,
     get_user_keyboard,
 )
@@ -135,7 +137,109 @@ async def select_slot_handler(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "my_lessons")
 async def my_lessons_handler(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.answer("Ваши занятия:")
+
+    db = next(get_db())
+    try:
+        # Ищем пользователя по telegram_id
+        user = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
+
+        if not user:
+            await callback.message.answer(
+                "Ошибка: пользователь не найден в базе данных."
+            )
+            return
+
+        # Получаем все занятия пользователя
+        lessons = (
+            db.query(TimeSlot)
+            .filter(TimeSlot.student_id == user.id)
+            .order_by(TimeSlot.start_time)
+            .all()
+        )
+
+        if not lessons:
+            await callback.message.answer("У вас нет записанных занятий.")
+            return
+
+        # Строим клавиатуру занятий
+        keyboard = get_all_user_lesson_keyboard(lessons)
+
+        await callback.message.edit_text("Ваши занятия:", reply_markup=keyboard)
+
+    finally:
+        db.close()
+
+
+@dp.callback_query(F.data.startswith("lesson_info:"))
+async def lesson_info_handler(callback: types.CallbackQuery):
+    await callback.answer()
+
+    lesson_id = int(callback.data.split(":")[1])
+
+    db = next(get_db())
+    try:
+        lesson = (
+            db.query(TimeSlot)
+            .options(joinedload(TimeSlot.admin))
+            .filter(TimeSlot.id == lesson_id)
+            .first()
+        )
+
+        if not lesson:
+            await callback.message.answer("Занятие не найдено.")
+            return
+
+        start_time = lesson.start_time.strftime("%Y-%m-%d %H:%M")
+        end_time = lesson.end_time.strftime("%H:%M")
+        subject = lesson.subject if lesson.subject else "Не указана"
+        teacher_name = lesson.admin.first_name if lesson.admin else "Неизвестно"
+
+        text = (
+            f"📚 <b>Тема:</b> {subject}\n"
+            f"👨‍🏫 <b>Преподаватель:</b> {teacher_name}\n"
+            f"🗓 <b>Дата:</b> {start_time} - {end_time}\n"
+        )
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_lesson_info_keyboard(lesson.id),
+            parse_mode="HTML",
+        )
+
+    finally:
+        db.close()
+
+
+@dp.callback_query(F.data.startswith("cancel_lesson:"))
+async def cancel_lesson_handler(callback: types.CallbackQuery):
+    await callback.answer()
+
+    lesson_id = int(callback.data.split(":")[1])
+    db = next(get_db())
+
+    try:
+        lesson = db.query(TimeSlot).filter(TimeSlot.id == lesson_id).first()
+
+        if not lesson:
+            await callback.message.answer("Занятие не найдено.")
+            return
+        user_id = (
+            db.query(User).filter(User.telegram_id == callback.from_user.id).first().id
+        )
+        # Проверяем, что этот юзер забронировал
+        if lesson.student_id != user_id:
+            await callback.message.answer("Вы не записаны на это занятие.")
+            return
+
+        # Отменяем бронь
+        lesson.is_booked = False
+        lesson.student_id = None
+        db.commit()
+
+        await callback.message.answer("Вы успешно отменили запись ✅")
+        await my_lessons_handler(callback)  # Перезапускаем список занятий
+    finally:
+        db.close()
 
 
 @dp.callback_query(F.data == "about_us")

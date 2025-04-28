@@ -123,6 +123,33 @@ def build_slots_time_keyboard(slots: list[TimeSlot]) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def get_all_user_lesson_keyboard(lessons):
+    builder = InlineKeyboardBuilder()
+
+    for lesson in lessons:
+        start_str = lesson.start_time.strftime("%Y-%m-%d %H:%M")
+        end_str = lesson.end_time.strftime("%H:%M")
+        builder.button(
+            text=f"{start_str} - {end_str}",
+            callback_data=f"lesson_info:{lesson.id}",  # Можно потом сделать обработчик подробнее по занятию
+        )
+
+    builder.button(text="↩️ Назад", callback_data="back_to_menu")
+    builder.adjust(1)  # 1 кнопка в ряд
+
+    return builder.as_markup()
+
+
+def get_lesson_info_keyboard(lesson_id: int):
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="❌ Отменить запись", callback_data=f"cancel_lesson:{lesson_id}"
+    )
+    builder.button(text="↩️ Назад", callback_data="my_lessons")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 def get_admin_calendar_keyboard(
     year: int = None, month: int = None
 ) -> InlineKeyboardMarkup:
