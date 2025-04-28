@@ -9,6 +9,7 @@ from keyboards import (
     get_admin_calendar_keyboard,
     get_admin_keyboard,
     get_all_user_lesson_keyboard,
+    get_back_to_signup_keyboard,
     get_lesson_info_keyboard,
     get_user_calendar_keyboard,
     get_user_keyboard,
@@ -39,6 +40,19 @@ async def add_schedule_handler(callback: types.CallbackQuery):
     await callback.message.edit_text(
         "Выбери свободный день:",
         reply_markup=get_user_calendar_keyboard(),
+    )
+
+
+@dp.callback_query(F.data.startswith("view_calendar:"))
+async def process_calendar_navigation(callback: types.CallbackQuery):
+    await callback.answer()
+
+    _, date_str = callback.data.split(":")
+    year, month = map(int, date_str.split("-"))
+
+    await callback.message.edit_text(
+        "Выбери свободный день:",
+        reply_markup=get_user_calendar_keyboard(year, month),
     )
 
 
@@ -123,8 +137,8 @@ async def select_slot_handler(callback: types.CallbackQuery):
         db.commit()
 
         # Отправляем подтверждение
-        await callback.message.answer(
-            f"Вы успешно записались на слот {slot.start_time.strftime('%H:%M')}."
+        await callback.message.edit_text(
+            f"Вы успешно записались на слот {slot.start_time.strftime('%H:%M')} - {slot.end_time.strftime('%H:%M')}."
         )
 
     finally:
@@ -158,7 +172,10 @@ async def my_lessons_handler(callback: types.CallbackQuery):
         )
 
         if not lessons:
-            await callback.message.answer("У вас нет записанных занятий.")
+            await callback.message.edit_text(
+                "У вас пока нет записей на занятия 📚",
+                reply_markup=get_back_to_signup_keyboard(),
+            )
             return
 
         # Строим клавиатуру занятий
@@ -433,3 +450,8 @@ async def back_to_menu_handler(callback: types.CallbackQuery):
         await callback.message.edit_text(
             "Добро пожаловать обратно!", reply_markup=get_user_keyboard()
         )
+
+
+@dp.callback_query(F.data == "ignore")
+async def ignore_callback(callback: types.CallbackQuery):
+    await callback.answer()

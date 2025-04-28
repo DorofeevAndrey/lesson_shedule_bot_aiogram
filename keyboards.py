@@ -1,7 +1,6 @@
 import calendar
 from datetime import date, datetime, timedelta
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram import F, types
 from sqlalchemy import func
 
 from config import ADMIN_ID
@@ -11,34 +10,26 @@ from models import TimeSlot, User
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-def get_admin_keyboard():
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📅 Добавить расписание", callback_data="add_schedule"
-                ),
-                InlineKeyboardButton(
-                    text="🗓️ Посмотреть расписание", callback_data="view_schedule"
-                ),
-            ]
-        ]
-    )
-    return keyboard
+def get_admin_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📅 Добавить расписание", callback_data="add_schedule")
+    builder.button(text="🗓️ Посмотреть расписание", callback_data="view_schedule")
+    builder.adjust(1)
+    return builder.as_markup()
 
 
-def get_user_keyboard():
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📅 Записаться", callback_data="sign_up")],
-            [InlineKeyboardButton(text="🗓️ Мои занятия", callback_data="my_lessons")],
-            [InlineKeyboardButton(text="ℹ️ О нас", callback_data="about_us")],
-        ]
-    )
-    return keyboard
+def get_user_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📅 Записаться", callback_data="sign_up")
+    builder.button(text="🗓️ Мои занятия", callback_data="my_lessons")
+    builder.button(text="ℹ️ О нас", callback_data="about_us")
+    builder.adjust(1)
+    return builder.as_markup()
 
 
-def get_user_calendar_keyboard() -> InlineKeyboardMarkup:
+def get_user_calendar_keyboard(
+    year: int = None, month: int = None
+) -> InlineKeyboardMarkup:
     db = next(get_db())
     now = datetime.now()
     min_date = now.date()
@@ -48,7 +39,8 @@ def get_user_calendar_keyboard() -> InlineKeyboardMarkup:
     if not admin:
         db.close()
         raise ValueError("Администратор с таким Telegram ID не найден.")
-    # Получаем все уникальные даты, на которые есть слоты
+
+    # Получаем все уникальные даты, на которые есть свободные слоты
     slots_dates = (
         db.query(func.date(TimeSlot.start_time))
         .filter(
@@ -61,12 +53,13 @@ def get_user_calendar_keyboard() -> InlineKeyboardMarkup:
     )
     db.close()
 
-    # Превращаем в set для удобства поиска
     available_dates = set(d[0] for d in slots_dates)
 
-    # Строим календарь для текущего месяца
-    year = now.year
-    month = now.month
+    # Если год и месяц не переданы - берем текущие
+    if year is None or month is None:
+        year = now.year
+        month = now.month
+
     month_cal = calendar.monthcalendar(year, month)
     month_name = calendar.month_name[month]
     header = f"{month_name} {year}"
@@ -101,6 +94,35 @@ def get_user_calendar_keyboard() -> InlineKeyboardMarkup:
                     )
         keyboard.append(week_buttons)
 
+    # Определяем наличие предыдущего и следующего месяца со слотами
+    available_months = set((d.year, d.month) for d in available_dates)
+
+    prev_month = (month - 1) or 12
+    prev_year = year if month != 1 else year - 1
+
+    next_month = (month + 1) if month != 12 else 1
+    next_year = year if month != 12 else year + 1
+
+    has_prev = (prev_year, prev_month) in available_months
+    has_next = (next_year, next_month) in available_months
+
+    navigation_buttons = []
+    if has_prev:
+        navigation_buttons.append(
+            InlineKeyboardButton(
+                text="◀️", callback_data=f"view_calendar:{prev_year}-{prev_month}"
+            )
+        )
+    navigation_buttons.append(InlineKeyboardButton(text="📅", callback_data="ignore"))
+    if has_next:
+        navigation_buttons.append(
+            InlineKeyboardButton(
+                text="▶️", callback_data=f"view_calendar:{next_year}-{next_month}"
+            )
+        )
+
+    keyboard.append(navigation_buttons)
+
     # Кнопка назад
     keyboard.append(
         [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_menu")]
@@ -113,12 +135,15 @@ def build_slots_time_keyboard(slots: list[TimeSlot]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for slot in slots:
-        time_text = slot.start_time.strftime("%H:%M")
-        builder.button(text=time_text, callback_data=f"select_slot:{slot.id}")
+        start_time = slot.start_time.strftime("%Y-%m-%d %H:%M")
+        end_time = slot.end_time.strftime("%H:%M")
+        builder.button(
+            text=f"{start_time} - {end_time}", callback_data=f"select_slot:{slot.id}"
+        )
 
     builder.button(text="↩️ Назад", callback_data="sign_up")
 
-    builder.adjust(2)  # например 2 кнопки в ряд
+    builder.adjust(1)  # например 2 кнопки в ряд
 
     return builder.as_markup()
 
@@ -146,6 +171,14 @@ def get_lesson_info_keyboard(lesson_id: int):
         text="❌ Отменить запись", callback_data=f"cancel_lesson:{lesson_id}"
     )
     builder.button(text="↩️ Назад", callback_data="my_lessons")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_back_to_signup_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📅 Записаться на занятие", callback_data="sign_up")
+    builder.button(text="↩️ Назад", callback_data="back_to_menu")  # если хочешь
     builder.adjust(1)
     return builder.as_markup()
 

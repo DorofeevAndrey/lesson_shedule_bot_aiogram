@@ -33,14 +33,28 @@ async def start_handler(message: types.Message):
         # Ответ пользователю
         if message.from_user.id == ADMIN_ID:
             await message.answer(
-                "Вы вошли как администратор:", reply_markup=get_admin_keyboard()
+                f"Добро пожаловать, {message.from_user.username}, вы админ! Выберите действие:",
+                reply_markup=get_admin_keyboard(),
             )
         else:
             await message.answer(
-                "Добро пожаловать! Выберите действие:", reply_markup=get_user_keyboard()
+                f"Добро пожаловать, {message.from_user.username}, Выберите действие:",
+                reply_markup=get_user_keyboard(),
             )
     finally:
         db.close()
+
+
+@dp.message(Command("admin"))
+async def start_handler(message: types.Message):
+    await message.answer(
+        "Вы вошли как администратор:", reply_markup=get_admin_keyboard()
+    )
+
+
+@dp.message(Command("user"))
+async def start_handler(message: types.Message):
+    await message.answer("Вы вошли как пользователь:", reply_markup=get_user_keyboard())
 
 
 @dp.message(Command("id"))
