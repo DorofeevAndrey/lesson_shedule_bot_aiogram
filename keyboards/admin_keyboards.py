@@ -137,9 +137,19 @@ def get_admin_shedule_slots_keyboard(slots):
     return builder.as_markup()
 
 
-def get_admin_selected_slot_keyboard(slot_id):
+def get_admin_delete_selected_slot_keyboard(slot_id):
     builder = InlineKeyboardBuilder()
-    builder.button(text="Удалить/Отменить слот", callback_data=f"delete_slot:{slot_id}")
+    builder.button(text="Удалить слот", callback_data=f"delete_slot:{slot_id}")
+    builder.button(text="↩️ Назад", callback_data="view_schedule")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_admin_cancel_selected_slot_keyboard(slot_id):
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="Отменить урок", callback_data=f"cansel_user_selected_slot:{slot_id}"
+    )
     builder.button(text="↩️ Назад", callback_data="view_schedule")
     builder.adjust(1)
     return builder.as_markup()

@@ -12,8 +12,9 @@ from handlers.states import ScheduleStates
 from keyboards.admin_keyboards import (
     get_admin_accept_or_reject_slot_keyboard,
     get_admin_calendar_keyboard,
+    get_admin_cancel_selected_slot_keyboard,
+    get_admin_delete_selected_slot_keyboard,
     get_admin_keyboard,
-    get_admin_selected_slot_keyboard,
     get_admin_shedule_slots_keyboard,
 )
 
@@ -168,20 +169,25 @@ async def delete_slot_handler(callback: types.CallbackQuery):
         start = slot.start_time.strftime("%d-%m-%Y %H:%M")
         end = slot.end_time.strftime("%H:%M")
         date_str = f"{start} - {end}"
-        student = slot.student
+
         has_student = slot.student_id != None
         if not slot:
             await callback.message.answer("Ошибка: слот не найден.")
             return
-
+        # Если есть студент
         if has_student:
+            student = slot.student
+
+            student_info = (
+                f"@{student.username}"
+                if student.username
+                else f"{student.full_name} (ID: {student.id})"
+            )
             # Если слот занят студентом
             if slot.is_booked == True:
-                student_info = f" @{student.username}"
-
                 await callback.message.edit_text(
-                    f"Запись на {date_str}\n" f"Студент: {student_info}",
-                    reply_markup=get_admin_selected_slot_keyboard(slot_id),
+                    f"Запись на {date_str}\n Студент: {student_info}",
+                    reply_markup=get_admin_cancel_selected_slot_keyboard(slot_id),
                 )
             else:
                 # Если слот в ожидании
@@ -195,7 +201,7 @@ async def delete_slot_handler(callback: types.CallbackQuery):
             # Если слот свободен
             await callback.message.edit_text(
                 f"Запись на {date_str}\n" f"Статус: Свободна",
-                reply_markup=get_admin_selected_slot_keyboard(slot_id),
+                reply_markup=get_admin_delete_selected_slot_keyboard(slot_id),
             )
     finally:
         db.close()
@@ -219,13 +225,13 @@ async def delete_slot_handler(callback: types.CallbackQuery):
         db.delete(slot)
         db.commit()
 
-        temp_message = await callback.message.answer("Слот успешно удалён ✅")
-        await asyncio.sleep(1)
-        await temp_message.delete()
+        await callback.message.edit_text(
+            "Слот успешно удалён ✅", reply_markup=get_ok_to_menu_keyboard()
+        )
 
     finally:
         db.close()
-    await view_schedule_handler(callback)
+    # await view_schedule_handler(callback)
 
 
 @admin_router.callback_query(F.data.startswith("is_booked_slot:"))
@@ -307,6 +313,50 @@ async def delete_slot_handler(callback: types.CallbackQuery):
         await bot.send_message(
             chat_id=chat_id,
             text=f"Администратор отменил ващу заявку на {date_str}",
+            reply_markup=get_ok_to_menu_keyboard(),
+        )
+
+    finally:
+        db.close()
+
+
+@admin_router.callback_query(F.data.startswith("cansel_user_selected_slot:"))
+async def delete_slot_handler(callback: types.CallbackQuery):
+    await callback.answer()
+
+    slot_id = int(callback.data.split(":")[1])
+
+    db = next(get_db())
+
+    try:
+        slot = (
+            db.query(TimeSlot)
+            .options(joinedload(TimeSlot.student))
+            .filter(TimeSlot.id == slot_id)
+            .first()
+        )
+
+        if not slot:
+            await callback.message.answer("Ошибка: слот не найден.")
+            return
+
+        chat_id = slot.student.telegram_id
+        start = slot.start_time.strftime("%d-%m-%Y %H:%M")
+        end = slot.end_time.strftime("%H:%M")
+        date_str = f"{start} - {end}"
+
+        slot.student_id = None
+        slot.is_booked = False
+        db.commit()
+
+        await callback.message.edit_text(
+            f"Вы отменили занятие на {date_str}\n На него все ещё могут записаться другие пользователи!",
+            reply_markup=get_ok_to_menu_keyboard(),
+        )
+        print(chat_id)
+        await bot.send_message(
+            chat_id=chat_id,
+            text=f"Администратор отменил ваще занятие на {date_str}",
             reply_markup=get_ok_to_menu_keyboard(),
         )
 

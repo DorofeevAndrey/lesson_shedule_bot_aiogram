@@ -251,26 +251,30 @@ async def cancel_lesson_handler(callback: types.CallbackQuery):
         if not lesson:
             await callback.message.answer("Занятие не найдено.")
             return
-        user_id = (
-            db.query(User).filter(User.telegram_id == callback.from_user.id).first().id
-        )
+        user = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
         # Проверяем, что этот юзер забронировал
-        if lesson.student_id != user_id:
+        if lesson.student_id != user.id:
             await callback.message.answer("Вы не записаны на это занятие.")
             return
+        start = lesson.start_time.strftime("%d-%m-%Y %H:%M")
+        end = lesson.end_time.strftime("%H:%M")
+        date_str = f"{start} - {end}"
 
         # Отменяем бронь
         lesson.is_booked = False
         lesson.student_id = None
         db.commit()
 
-        temp_message = await callback.message.answer("Вы успешно отменили запись ✅")
+        await callback.message.edit_text(
+            "Вы успешно отменили запись ✅", reply_markup=get_ok_to_menu_keyboard()
+        )
 
-        await asyncio.sleep(1)
+        await bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"@{user.username} отменил запись на {date_str}",
+        )
 
-        await temp_message.delete()
-
-        await my_lessons_handler(callback)  # Перезапускаем список занятий
+        # await my_lessons_handler(callback)  # Перезапускаем список занятий
     finally:
         db.close()
 
