@@ -64,50 +64,172 @@ async def select_date_handler(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+# @admin_router.message(ScheduleStates.waiting_for_time)
+# async def process_time_input(message: types.Message, state: FSMContext):
+#     time_pattern = re.compile(r"^\d{2}:\d{2} - \d{2}:\d{2}$")
+#     if not time_pattern.match(message.text):
+#         await message.answer(
+#             "Неверный формат времени. Пожалуйста, введите время в формате HH:MM - HH:MM, например, 12:00 - 13:00.",
+#             reply_markup=get_back_to_menu_keyboard(),
+#         )
+#         # Состояние остается активным для повторного ввода
+#         return
+
+#     try:
+#         # Получаем сохраненную дату из состояния
+#         data = await state.get_data()
+#         date_str = data["selected_date"]
+
+#         # Разбираем введенное время
+#         start_time_str, end_time_str = message.text.split(" - ")
+
+#         date_format = "%d-%m-%Y %H:%M"
+
+#         start_datetime = datetime.strptime(f"{date_str} {start_time_str}", date_format)
+#         end_datetime = datetime.strptime(f"{date_str} {end_time_str}", date_format)
+
+#         if end_datetime <= start_datetime:
+#             await message.answer(
+#                 "Ошибка: время окончания должно быть позже времени начала."
+#             )
+#             return
+
+#         # Сохраняем в базу данных
+#         db = next(get_db())
+#         # admin = db.query(User).filter(User.telegram_id == message.from_user.id).first()
+#         admin = db.query(User).filter(User.telegram_id == ADMIN_ID).first()
+#         existing_slot = (
+#             db.query(TimeSlot)
+#             .filter(
+#                 TimeSlot.start_time == start_datetime,
+#                 TimeSlot.end_time == end_datetime,
+#                 TimeSlot.admin_id == admin.id,
+#             )
+#             .first()
+#         )
+#         if existing_slot:
+#             await message.answer(
+#                 "⚠️ Такой временной слот уже существует!\n"
+#                 f"Дата: {date_str}\n"
+#                 f"Время: {message.text}",
+#             )
+#             return
+
+#         new_slot = TimeSlot(
+#             start_time=start_datetime,
+#             end_time=end_datetime,
+#             is_booked=False,
+#             admin_id=admin.id,
+#         )
+#         db.add(new_slot)
+#         db.commit()
+
+#         await message.answer(
+#             f"Слот успешно добавлен: {date_str} {message.text} ✅",
+#             reply_markup=get_admin_keyboard(),
+#         )
+#     except ValueError as e:
+#         await message.answer(
+#             f"Ошибка: {str(e)}. Пожалуйста, проверьте правильность введенных данных."
+#         )
+#     finally:
+#         await state.clear()
+
+
 @admin_router.message(ScheduleStates.waiting_for_time)
 async def process_time_input(message: types.Message, state: FSMContext):
     time_pattern = re.compile(r"^\d{2}:\d{2} - \d{2}:\d{2}$")
+
+    # Сохраняем состояние перед проверками
+    data = await state.get_data()
+    date_str = data["selected_date"]
+
     if not time_pattern.match(message.text):
         await message.answer(
-            "Неверный формат времени. Пожалуйста, введите время в формате HH:MM - HH:MM, например, 12:00 - 13:00."
+            "Неверный формат времени. Пожалуйста, введите время в формате HH:MM - HH:MM, например, 12:00 - 13:00.",
+            reply_markup=get_back_to_menu_keyboard(),
         )
+        # Состояние остается активным для повторного ввода
         return
 
     try:
-        # Получаем сохраненную дату из состояния
-        data = await state.get_data()
-        date_str = data["selected_date"]
-
         # Разбираем введенное время
         start_time_str, end_time_str = message.text.split(" - ")
-
         date_format = "%d-%m-%Y %H:%M"
 
         start_datetime = datetime.strptime(f"{date_str} {start_time_str}", date_format)
         end_datetime = datetime.strptime(f"{date_str} {end_time_str}", date_format)
 
-        # Сохраняем в базу данных
-        db = next(get_db())
-        admin = db.query(User).filter(User.telegram_id == message.from_user.id).first()
-        new_slot = TimeSlot(
-            start_time=start_datetime,
-            end_time=end_datetime,
-            is_booked=False,
-            admin_id=admin.id,
-        )
-        db.add(new_slot)
-        db.commit()
+        # Проверяем, что время окончания позже времени начала
+        if end_datetime <= start_datetime:
+            await message.answer(
+                "Ошибка: время окончания должно быть позже времени начала.\n"
+                "Пожалуйста, введите время заново:",
+                reply_markup=get_back_to_menu_keyboard(),
+            )
+            # Состояние остается активным для повторного ввода
+            return
 
-        await message.answer(
-            f"Слот успешно добавлен: {date_str} {message.text} ✅",
-            reply_markup=get_admin_keyboard(),
-        )
+        db = next(get_db())
+        try:
+            admin = db.query(User).filter(User.telegram_id == ADMIN_ID).first()
+            # Проверяем на существующий слот
+            existing_slot = (
+                db.query(TimeSlot)
+                .filter(
+                    TimeSlot.start_time == start_datetime,
+                    TimeSlot.end_time == end_datetime,
+                    TimeSlot.admin_id == admin.id,
+                )
+                .first()
+            )
+
+            if existing_slot:
+                await message.answer(
+                    "⚠️ Такой временной слот уже существует!\n"
+                    f"Дата: {date_str}\n"
+                    f"Время: {message.text}\n\n"
+                    "Пожалуйста, введите другое время:",
+                    reply_markup=get_back_to_menu_keyboard(),
+                )
+                # Состояние остается активным для повторного ввода
+                return
+
+            # Создаем новый слот
+
+            new_slot = TimeSlot(
+                start_time=start_datetime,
+                end_time=end_datetime,
+                is_booked=False,
+                admin_id=admin.id,
+            )
+            db.add(new_slot)
+            db.commit()
+
+            await message.answer(
+                f"Слот успешно добавлен: {date_str} {message.text} ✅",
+                reply_markup=get_admin_keyboard(),
+            )
+            await state.clear()  # Очищаем состояние только при успешном добавлении
+
+        except Exception as e:
+            await message.answer(
+                f"Произошла ошибка: {str(e)}\n" "Пожалуйста, попробуйте еще раз:",
+                reply_markup=get_back_to_menu_keyboard(),
+            )
+            # Состояние остается активным для повторного ввода
+            return
+        finally:
+            db.close()
+
     except ValueError as e:
         await message.answer(
-            f"Ошибка: {str(e)}. Пожалуйста, проверьте правильность введенных данных."
+            f"Ошибка формата: {str(e)}\n"
+            "Пожалуйста, введите время заново в формате HH:MM - HH:MM:",
+            reply_markup=get_back_to_menu_keyboard(),
         )
-    finally:
-        await state.clear()
+        # Состояние остается активным для повторного ввода
+        return
 
 
 @admin_router.callback_query(F.data == "view_schedule")
