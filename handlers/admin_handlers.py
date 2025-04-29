@@ -7,6 +7,7 @@ from aiogram import F, types
 from sqlalchemy.orm import joinedload
 from aiogram.fsm.context import FSMContext
 
+from config import ADMIN_ID
 from handlers.states import ScheduleStates
 from keyboards.admin_keyboards import (
     get_admin_calendar_keyboard,
@@ -80,14 +81,14 @@ async def process_time_input(message: types.Message, state: FSMContext):
 
         # Сохраняем в базу данных
         db = next(get_db())
-        admin_id = (
-            db.query(User).filter(User.telegram_id == message.from_user.id).first().id
-        )
+        # admin_id = (
+        #     db.query(User).filter(User.telegram_id == message.from_user.id).first().id
+        # )
         new_slot = TimeSlot(
             start_time=start_datetime,
             end_time=end_datetime,
             is_booked=False,
-            admin_id=admin_id,
+            admin_id=ADMIN_ID,
         )
         db.add(new_slot)
         db.commit()
@@ -112,19 +113,19 @@ async def view_schedule_handler(callback: types.CallbackQuery):
 
     try:
         # Находим текущего администратора
-        admin = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
+        # admin = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
 
-        if not admin:
-            await callback.message.answer(
-                "Ошибка: администратор не найден в базе данных."
-            )
-            return
+        # if not admin:
+        #     await callback.message.answer(
+        #         "Ошибка: администратор не найден в базе данных."
+        #     )
+        #     return
 
         # Получаем все слоты, которые создал этот админ
         slots = (
             db.query(TimeSlot)
             .options(joinedload(TimeSlot.student))
-            .filter(TimeSlot.admin_id == admin.id)
+            .filter(TimeSlot.admin_id == ADMIN_ID)
             .order_by(TimeSlot.start_time)
             .all()
         )
