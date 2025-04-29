@@ -115,8 +115,12 @@ def get_admin_shedule_slots_keyboard(slots):
     for slot in slots:
         start = slot.start_time.strftime("%d-%m-%Y %H:%M")
         end = slot.end_time.strftime("%H:%M")
-        if slot.is_booked and slot.student:
-            student_info = f"Забронировано"
+        if slot.student:
+            if slot.is_booked:
+                student_info = f"Забронировано"
+            else:
+                student_info = f"В ожидании"
+
         else:
             student_info = "Свободно"
 
@@ -137,5 +141,13 @@ def get_admin_selected_slot_keyboard(slot_id):
     builder = InlineKeyboardBuilder()
     builder.button(text="Удалить/Отменить слот", callback_data=f"delete_slot:{slot_id}")
     builder.button(text="↩️ Назад", callback_data="view_schedule")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_admin_accept_or_reject_slot_keyboard(slot_id):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Принять", callback_data=f"is_booked_slot:{slot_id}")
+    builder.button(text="Отклонить", callback_data=f"cancel_booked_slot:{slot_id}")
     builder.adjust(1)
     return builder.as_markup()

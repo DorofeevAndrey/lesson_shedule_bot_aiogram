@@ -10,6 +10,7 @@ from aiogram.fsm.context import FSMContext
 from config import ADMIN_ID
 from handlers.states import ScheduleStates
 from keyboards.admin_keyboards import (
+    get_admin_accept_or_reject_slot_keyboard,
     get_admin_calendar_keyboard,
     get_admin_keyboard,
     get_admin_selected_slot_keyboard,
@@ -18,8 +19,13 @@ from keyboards.admin_keyboards import (
 
 from database import get_db
 
-from keyboards.common_keyboards import get_back_to_menu_keyboard
+from keyboards.common_keyboards import (
+    get_back_to_menu_keyboard,
+    get_ok_to_menu_keyboard,
+)
 from models import TimeSlot, User
+
+from bot_instance import bot
 
 
 admin_router = Router()
@@ -81,14 +87,12 @@ async def process_time_input(message: types.Message, state: FSMContext):
 
         # Сохраняем в базу данных
         db = next(get_db())
-        # admin_id = (
-        #     db.query(User).filter(User.telegram_id == message.from_user.id).first().id
-        # )
+        admin = db.query(User).filter(User.telegram_id == message.from_user.id).first()
         new_slot = TimeSlot(
             start_time=start_datetime,
             end_time=end_datetime,
             is_booked=False,
-            admin_id=ADMIN_ID,
+            admin_id=admin.id,
         )
         db.add(new_slot)
         db.commit()
@@ -113,19 +117,19 @@ async def view_schedule_handler(callback: types.CallbackQuery):
 
     try:
         # Находим текущего администратора
-        # admin = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
+        admin = db.query(User).filter(User.telegram_id == callback.from_user.id).first()
 
-        # if not admin:
-        #     await callback.message.answer(
-        #         "Ошибка: администратор не найден в базе данных."
-        #     )
-        #     return
-
+        # admin = db.query(User).filter(User.telegram_id == ADMIN_ID).first()
+        if not admin:
+            await callback.message.answer(
+                "Ошибка: администратор не найден в базе данных."
+            )
+            return
         # Получаем все слоты, которые создал этот админ
         slots = (
             db.query(TimeSlot)
             .options(joinedload(TimeSlot.student))
-            .filter(TimeSlot.admin_id == ADMIN_ID)
+            .filter(TimeSlot.admin_id == admin.id)
             .order_by(TimeSlot.start_time)
             .all()
         )
@@ -164,26 +168,35 @@ async def delete_slot_handler(callback: types.CallbackQuery):
         start = slot.start_time.strftime("%d-%m-%Y %H:%M")
         end = slot.end_time.strftime("%H:%M")
         date_str = f"{start} - {end}"
-        has_student = slot.student
+        student = slot.student
+        has_student = slot.student_id != None
         if not slot:
             await callback.message.answer("Ошибка: слот не найден.")
             return
 
         if has_student:
             # Если слот занят студентом
-            student_info = f" @{slot.student.username}"
+            if slot.is_booked == True:
+                student_info = f" @{student.username}"
 
-            await callback.message.edit_text(
-                f"Запись на {date_str}\n" f"Студент: {student_info}",
-                reply_markup=get_admin_selected_slot_keyboard(slot_id),
-            )
+                await callback.message.edit_text(
+                    f"Запись на {date_str}\n" f"Студент: {student_info}",
+                    reply_markup=get_admin_selected_slot_keyboard(slot_id),
+                )
+            else:
+                # Если слот в ожидании
+                await callback.message.edit_text(
+                    f"Запись на {date_str}\n"
+                    f"Статус: В ожидании\n Студент: @{student_info}",
+                    reply_markup=get_admin_accept_or_reject_slot_keyboard(slot_id),
+                )
+
         else:
             # Если слот свободен
             await callback.message.edit_text(
-                f"Запись на {date_str}\n" f"Статус: Свободен",
+                f"Запись на {date_str}\n" f"Статус: Свободна",
                 reply_markup=get_admin_selected_slot_keyboard(slot_id),
             )
-
     finally:
         db.close()
 
@@ -213,3 +226,89 @@ async def delete_slot_handler(callback: types.CallbackQuery):
     finally:
         db.close()
     await view_schedule_handler(callback)
+
+
+@admin_router.callback_query(F.data.startswith("is_booked_slot:"))
+async def delete_slot_handler(callback: types.CallbackQuery):
+    await callback.answer()
+
+    slot_id = int(callback.data.split(":")[1])
+
+    db = next(get_db())
+
+    try:
+        slot = (
+            db.query(TimeSlot)
+            .options(joinedload(TimeSlot.student))
+            .filter(TimeSlot.id == slot_id)
+            .first()
+        )
+
+        if not slot:
+            await callback.message.answer("Ошибка: слот не найден.")
+            return
+
+        chat_id = slot.student.telegram_id
+        start = slot.start_time.strftime("%d-%m-%Y %H:%M")
+        end = slot.end_time.strftime("%H:%M")
+        date_str = f"{start} - {end}"
+
+        slot.is_booked = True
+        db.commit()
+
+        await callback.message.edit_text(
+            f"Отлично! Вы приняли слот на {date_str}, удачной работы)",
+            reply_markup=get_ok_to_menu_keyboard(),
+        )
+
+        print(chat_id)
+        await bot.send_message(
+            chat_id=chat_id,
+            text=f"Администратор одобрил ващу заявку на {date_str}, хороших уроков",
+            reply_markup=get_ok_to_menu_keyboard(),
+        )
+    finally:
+        db.close()
+
+
+@admin_router.callback_query(F.data.startswith("cancel_booked_slot:"))
+async def delete_slot_handler(callback: types.CallbackQuery):
+    await callback.answer()
+
+    slot_id = int(callback.data.split(":")[1])
+
+    db = next(get_db())
+
+    try:
+        slot = (
+            db.query(TimeSlot)
+            .options(joinedload(TimeSlot.student))
+            .filter(TimeSlot.id == slot_id)
+            .first()
+        )
+
+        if not slot:
+            await callback.message.answer("Ошибка: слот не найден.")
+            return
+
+        chat_id = slot.student.telegram_id
+        start = slot.start_time.strftime("%d-%m-%Y %H:%M")
+        end = slot.end_time.strftime("%H:%M")
+        date_str = f"{start} - {end}"
+
+        slot.student_id = None
+        db.commit()
+
+        await callback.message.edit_text(
+            f"Вы отменили слот на {date_str}\n На него все ещё могут записаться другие пользователи!",
+            reply_markup=get_ok_to_menu_keyboard(),
+        )
+        print(chat_id)
+        await bot.send_message(
+            chat_id=chat_id,
+            text=f"Администратор отменил ващу заявку на {date_str}",
+            reply_markup=get_ok_to_menu_keyboard(),
+        )
+
+    finally:
+        db.close()

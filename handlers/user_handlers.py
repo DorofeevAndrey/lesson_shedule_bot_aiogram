@@ -9,8 +9,13 @@ from sqlalchemy.orm import joinedload
 
 from config import ADMIN_ID
 from database import get_db
-from keyboards.common_keyboards import get_back_to_menu_keyboard
+from keyboards.admin_keyboards import get_admin_accept_or_reject_slot_keyboard
+from keyboards.common_keyboards import (
+    get_back_to_menu_keyboard,
+    get_ok_to_menu_keyboard,
+)
 from models import TimeSlot, User
+from bot_instance import bot
 
 
 from keyboards.user_keyboards import (
@@ -124,19 +129,31 @@ async def select_slot_handler(callback: types.CallbackQuery):
 
         # Записываем пользователя в поле student_id
         slot.student_id = student.id
-        slot.is_booked = True  # Слот теперь забронирован
+        slot.is_booked = False  # Нужно подтвреждение
         db.commit()
-
-        # Отправляем подтверждение
         await callback.message.edit_text(
-            f"Вы успешно записались на слот {slot.start_time.strftime('%d-%m-%Y %H:%M')} - {slot.end_time.strftime('%H:%M')}."
+            f"✅ Ваша заявка на слот {slot.start_time.strftime('%d-%m-%Y %H:%M')} - {slot.end_time.strftime('%H:%M')} отправлена.\n"
+            "Ожидайте подтверждения от администратора. Вы получите уведомление, когда заявка будет обработана.",
+            reply_markup=get_ok_to_menu_keyboard(),
         )
+        user_link = f"tg://openmessage?user_id={1387661016}"
+        await bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"Новая заявка на слот:\n"
+            f"Дата: {slot.start_time.strftime('%d-%m-%Y %H:%M')}\n"
+            f"👤 Студент: @{student.username}\n",
+            reply_markup=get_admin_accept_or_reject_slot_keyboard(slot_id),
+        )
+        # # Отправляем подтверждение
+        # await callback.message.edit_text(
+        #     f"Вы успешно записались на слот {slot.start_time.strftime('%d-%m-%Y %H:%M')} - {slot.end_time.strftime('%H:%M')}."
+        # )
 
     finally:
         db.close()
 
     # Возвращаемся к меню
-    await callback.message.edit_reply_markup(reply_markup=get_user_calendar_keyboard())
+    # await callback.message.edit_reply_markup(reply_markup=get_user_calendar_keyboard())
 
 
 @user_router.callback_query(F.data == "my_lessons")
@@ -158,6 +175,7 @@ async def my_lessons_handler(callback: types.CallbackQuery):
         lessons = (
             db.query(TimeSlot)
             .filter(TimeSlot.student_id == user.id)
+            .filter(TimeSlot.is_booked == True)
             .order_by(TimeSlot.start_time)
             .all()
         )

@@ -40,6 +40,7 @@ def get_user_calendar_keyboard(
             TimeSlot.start_time <= max_date,
             TimeSlot.admin_id == admin.id,
             TimeSlot.is_booked == False,
+            TimeSlot.student_id == None,
         )
         .all()
     )
