@@ -1,4 +1,3 @@
-import asyncio
 from aiogram import Router
 
 from datetime import datetime
