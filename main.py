@@ -1,14 +1,18 @@
 import asyncio
 from bot_instance import bot, dp
 from database import SessionLocal, create_tables
-import handlers
 
 from aiogram.filters import Command
 from config import ADMIN_ID
-from keyboards import get_admin_keyboard, get_user_keyboard
 from aiogram import types
 
+from keyboards.admin_keyboards import get_admin_keyboard
+from keyboards.user_keyboards import get_user_keyboard
 from models import User
+
+from handlers.admin_handlers import admin_router
+from handlers.common_handlers import common_router
+from handlers.user_handlers import user_router
 
 
 @dp.message(Command("start"))
@@ -65,6 +69,7 @@ async def start_handler(message: types.Message):
 
 async def main():
     create_tables()
+    dp.include_routers(admin_router, common_router, user_router)
     await dp.start_polling(bot)
 
 
