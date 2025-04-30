@@ -10,4 +10,5 @@ PASSWORD = os.getenv("POSTGRES_PASSWORD")
 HOST = os.getenv("POSTGRES_HOST")
 PORT = os.getenv("POSTGRES_PORT")
 DB = os.getenv("POSTGRES_DB")
-DB_URL = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}"
+# DB_URL = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}?"
+DB_URL = f"postgresql://postgres:JFHkckKupAuuyHaqWwzhVIRvWLXznTaM@switchyard.proxy.rlwy.net:53300/railway"
